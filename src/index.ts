@@ -1,8 +1,9 @@
+import { timingSafeEqual } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { WhoopClient } from './whoop-client.js';
 import { WhoopDatabase } from './database.js';
 import { WhoopSync } from './sync.js';
@@ -19,7 +20,54 @@ const config = {
 	dbPath: process.env.DB_PATH ?? './whoop.db',
 	port: Number.parseInt(process.env.PORT ?? '3000', 10),
 	mode: process.env.MCP_MODE ?? 'http',
+	authToken: process.env.MCP_AUTH_TOKEN ?? '',
 };
+
+if (config.mode === 'http') {
+	if (!config.authToken) {
+		throw new Error('MCP_AUTH_TOKEN env var is required when MCP_MODE=http');
+	}
+	if (!process.env.ENCRYPTION_SECRET) {
+		throw new Error('ENCRYPTION_SECRET env var is required when MCP_MODE=http');
+	}
+}
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const oauthStates = new Map<string, number>();
+
+function rememberOauthState(state: string): void {
+	const now = Date.now();
+	for (const [s, expires] of oauthStates) {
+		if (expires < now) oauthStates.delete(s);
+	}
+	oauthStates.set(state, now + OAUTH_STATE_TTL_MS);
+}
+
+function consumeOauthState(state: string | undefined): boolean {
+	if (!state) return false;
+	const expires = oauthStates.get(state);
+	if (!expires) return false;
+	oauthStates.delete(state);
+	return expires >= Date.now();
+}
+
+function bearerMatches(header: string | undefined, expected: string): boolean {
+	if (!header) return false;
+	const prefix = 'Bearer ';
+	if (!header.startsWith(prefix)) return false;
+	const provided = Buffer.from(header.slice(prefix.length));
+	const target = Buffer.from(expected);
+	if (provided.length !== target.length) return false;
+	return timingSafeEqual(provided, target);
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction): void {
+	if (!bearerMatches(req.headers.authorization, config.authToken)) {
+		res.status(401).send('Unauthorized');
+		return;
+	}
+	next();
+}
 
 const db = new WhoopDatabase(config.dbPath);
 const client = new WhoopClient({
@@ -312,7 +360,8 @@ function createMcpServer(): Server {
 
 				case 'get_auth_url': {
 					const scopes = ['read:profile', 'read:body_measurement', 'read:cycles', 'read:recovery', 'read:sleep', 'read:workout', 'offline'];
-					const url = client.getAuthorizationUrl(scopes);
+					const { url, state } = client.getAuthorizationUrl(scopes);
+					rememberOauthState(state);
 					return {
 						content: [{
 							type: 'text',
@@ -345,8 +394,13 @@ async function main(): Promise<void> {
 
 		app.get('/callback', async (req: Request, res: Response) => {
 			const code = req.query.code as string | undefined;
+			const state = req.query.state as string | undefined;
 			if (!code) {
 				res.status(400).send('Missing authorization code');
+				return;
+			}
+			if (!consumeOauthState(state)) {
+				res.status(400).send('Invalid or expired state parameter');
 				return;
 			}
 
@@ -364,7 +418,7 @@ async function main(): Promise<void> {
 			res.json({ status: 'ok', authenticated: Boolean(db.getTokens()) });
 		});
 
-		app.all('/mcp', async (req: Request, res: Response) => {
+		app.all('/mcp', requireAuth, async (req: Request, res: Response) => {
 			const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
 			if (req.method === 'DELETE' && sessionId && transports.has(sessionId)) {

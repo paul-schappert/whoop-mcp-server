@@ -42,6 +42,8 @@ Built using the [Whoop Developer API v2](https://developer.whoop.com/docs/introd
    - `WHOOP_CLIENT_ID`: Your Whoop app client ID
    - `WHOOP_CLIENT_SECRET`: Your Whoop app client secret
    - `WHOOP_REDIRECT_URI`: `https://your-app.railway.app/callback`
+   - `MCP_AUTH_TOKEN`: A long random string; MCP clients must send `Authorization: Bearer <this>` to reach `/mcp`. Generate with `openssl rand -hex 32`.
+   - `ENCRYPTION_SECRET`: A long random string used to encrypt stored OAuth tokens at rest. Generate with `openssl rand -hex 32`. Do not reuse `WHOOP_CLIENT_SECRET`.
 5. Add a volume mounted at `/data` for persistent SQLite storage
 6. Deploy!
 
@@ -59,7 +61,13 @@ Built using the [Whoop Developer API v2](https://developer.whoop.com/docs/introd
 3. Enter:
    - **Name**: Whoop
    - **Remote MCP server URL**: `https://your-app.railway.app/mcp`
+   - **Authentication**: Custom header → `Authorization: Bearer <your MCP_AUTH_TOKEN>`
 4. Use it in any chat!
+
+### 5. Connect to Poke
+
+1. In Poke, add a custom MCP integration pointing at `https://your-app.railway.app/mcp`
+2. Configure it to send the header `Authorization: Bearer <your MCP_AUTH_TOKEN>`
 
 ## Local Development
 
@@ -86,6 +94,8 @@ npm run dev
 | `WHOOP_CLIENT_ID` | Whoop OAuth client ID | Required |
 | `WHOOP_CLIENT_SECRET` | Whoop OAuth client secret | Required |
 | `WHOOP_REDIRECT_URI` | OAuth callback URL | `http://localhost:3000/callback` |
+| `MCP_AUTH_TOKEN` | Bearer token required on `/mcp` requests | Required when `MCP_MODE=http` |
+| `ENCRYPTION_SECRET` | Key-derivation secret for at-rest token encryption | Required when `MCP_MODE=http` |
 | `DB_PATH` | SQLite database path | `./whoop.db` |
 | `PORT` | HTTP server port | `3000` |
 | `MCP_MODE` | `http` for remote, `stdio` for local | `http` |

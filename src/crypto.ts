@@ -5,9 +5,9 @@ const KEY_LENGTH = 32;
 const IV_LENGTH = 16;
 
 function getEncryptionKey(): Buffer {
-	const secret = process.env.ENCRYPTION_SECRET || process.env.WHOOP_CLIENT_SECRET;
+	const secret = process.env.ENCRYPTION_SECRET;
 	if (!secret) {
-		throw new Error('No encryption secret available');
+		throw new Error('ENCRYPTION_SECRET env var is required');
 	}
 	const salt = Buffer.from('whoop-mcp-token-encryption', 'utf8');
 	return scryptSync(secret, salt, KEY_LENGTH);
