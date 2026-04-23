@@ -4,6 +4,8 @@ A Model Context Protocol (MCP) server that connects your Whoop health data to Cl
 
 Built using the [Whoop Developer API v2](https://developer.whoop.com/docs/introduction).
 
+Forked from [yuridivonis/whoop-mcp-server](https://github.com/yuridivonis/whoop-mcp-server); hardened for public deployment (bearer-token auth on `/mcp`, required `ENCRYPTION_SECRET`, OAuth state validation, dependency bumps).
+
 ## Features
 
 - **Recovery Data**: Daily recovery scores, HRV, resting heart rate, SpO2, skin temperature
